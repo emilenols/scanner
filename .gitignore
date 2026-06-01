@@ -1,0 +1,28 @@
+# --- never commit: secrets, client data, run artifacts ---
+venv/
+__pycache__/
+*.pyc
+
+# credentials
+scanner-sa-key.json
+*.json
+
+# the REAL client config (delivered out-of-band, never in the repo)
+client_config.yaml
+# ...but keep the template:
+!client_config.example.yaml
+
+# run state + outputs (all client data)
+run_id.txt
+audit/
+phase_a_inventory.jsonl
+pilot_catalog.jsonl
+pilot_catalog.csv
+pilot_failures.jsonl
+batch_requests.jsonl
+batch_results.jsonl
+batch_job.txt
+catalog_v1.jsonl
+catalog_v1.csv
+catalog_v1.parquet
+compliance_summary*.html
