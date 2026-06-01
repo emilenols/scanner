@@ -1,12 +1,16 @@
 # client_config.example.yaml — TEMPLATE (safe to commit; contains no real data)
 #
-# Per client: copy to client_config.yaml, fill every value, deliver to the
-# client out-of-band (NOT via this repo). The .gitignore keeps client_config.yaml
-# out of git automatically.
+# The operator copies this to client_config.yaml in their OWN Cloud Shell and
+# fills every value — see ALEX_walkthrough.md, Part 2. It is never committed:
+# the .gitignore keeps client_config.yaml out of git automatically.
+#
+# Three fields are advisory (a wrong value bites): routing.model (confirm with
+# list_models.py), the routing thresholds (leave defaults), and
+# gdpr.pass2_legal_basis_ref (leave null). Everything else is the operator's call.
 
 client: "<Client legal name>"
 engagement_ref: "<FFC-XX-YYYY>"
-operator: "Focusfinder Consulting"
+operator: "<who is running this scan>"
 
 gcp:
   project_id: "<client-data-lake>"        # also used by setup.sh (read automatically)
@@ -15,10 +19,10 @@ gcp:
   service_account: "scanner-sa"
 
 drive:
-  source_folder: "<Mirror folder name in the client's Drive>"
+  source_folder: "<exact mirror folder name in your Drive>"
 
-taxonomy:                                 # <-- the per-client judgement work
-  system_context: "<one line describing the client's business>"
+taxonomy:                                 # <-- your call: shape this to your documents
+  system_context: "<one line describing the business>"
   document_types:
     - "<Type 1>"
     - "<Type 2>"
@@ -27,15 +31,15 @@ taxonomy:                                 # <-- the per-client judgement work
   languages: ["nl", "fr", "en", "mixed", "unknown"]
 
 routing:
-  model: "gemini-2.5-flash-lite"          # confirm with list_models.py; 3.1-flash-lite is the upgrade
-  accept_threshold: 0.85
-  review_threshold: 0.70
+  model: "gemini-2.5-flash-lite"          # advisory — confirm with list_models.py; 3.1-flash-lite is the upgrade
+  accept_threshold: 0.85                  # leave default (changing is a methodology call)
+  review_threshold: 0.70                  # leave default
   fallback_model: "gemini-2.5-pro"
 
 gdpr:
   pass1_legal_basis: "type-only classification, no PII persisted — no basis required"
-  pass2_legal_basis_ref: null             # set ONLY after P0 GDPR sign-off; null blocks Pass 2 in code
+  pass2_legal_basis_ref: null             # LEAVE NULL — blocks Pass 2 in code until a legal basis is signed off
 
 gates:
-  gate_a_approver: { name: "<Client approver name>", role: "<role>" }
-  gate_b_approver: { name: "<Implementation lead name>", role: "<role>" }
+  gate_a_approver: { name: "<who signs off the taxonomy>", role: "<role>" }
+  gate_b_approver: { name: "<who runs the pilot review>", role: "<role>" }
