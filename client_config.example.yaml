@@ -1,0 +1,41 @@
+# client_config.example.yaml — TEMPLATE (safe to commit; contains no real data)
+#
+# Per client: copy to client_config.yaml, fill every value, deliver to the
+# client out-of-band (NOT via this repo). The .gitignore keeps client_config.yaml
+# out of git automatically.
+
+client: "<Client legal name>"
+engagement_ref: "<FFC-XX-YYYY>"
+operator: "Focusfinder Consulting"
+
+gcp:
+  project_id: "<client-data-lake>"        # also used by setup.sh (read automatically)
+  region: "europe-west1"                  # keep EU for GDPR
+  bucket: "<client-document-catalog-eu>"  # must be globally unique
+  service_account: "scanner-sa"
+
+drive:
+  source_folder: "<Mirror folder name in the client's Drive>"
+
+taxonomy:                                 # <-- the per-client judgement work
+  system_context: "<one line describing the client's business>"
+  document_types:
+    - "<Type 1>"
+    - "<Type 2>"
+    - "<...>"
+    - "Unknown"                           # required safety class — keep last
+  languages: ["nl", "fr", "en", "mixed", "unknown"]
+
+routing:
+  model: "gemini-2.5-flash-lite"          # confirm with list_models.py; 3.1-flash-lite is the upgrade
+  accept_threshold: 0.85
+  review_threshold: 0.70
+  fallback_model: "gemini-2.5-pro"
+
+gdpr:
+  pass1_legal_basis: "type-only classification, no PII persisted — no basis required"
+  pass2_legal_basis_ref: null             # set ONLY after P0 GDPR sign-off; null blocks Pass 2 in code
+
+gates:
+  gate_a_approver: { name: "<Client approver name>", role: "<role>" }
+  gate_b_approver: { name: "<Implementation lead name>", role: "<role>" }
