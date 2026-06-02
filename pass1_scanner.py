@@ -18,6 +18,7 @@ from tqdm import tqdm
 from config import (load_config, build_pass1_model, system_instruction,
                     routing, verify_model)
 from manifest import Manifest
+import reader
 
 INV = os.path.expanduser("~/scanner/phase_a_inventory.jsonl")
 BATCH_REQ = os.path.expanduser("~/scanner/batch_requests.jsonl")
@@ -28,6 +29,7 @@ MODEL = routing(cfg)["model"]
 Pass1 = build_pass1_model(cfg)
 SYS = system_instruction(cfg)
 BUCKET = cfg["gcp"]["bucket"]
+INCLUDE_IMAGES = cfg.get("scan", {}).get("include_images", True)
 
 creds = service_account.Credentials.from_service_account_file(
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"],
@@ -42,34 +44,27 @@ def gate_b_passed(m: Manifest) -> bool:
                for g in m.m.human_gates)
 
 
-def download(file_id: str) -> bytes:
-    req = drive.files().get_media(fileId=file_id)
-    buf = io.BytesIO()
-    dl = MediaIoBaseDownload(buf, req)
-    done = False
-    while not done:
-        _, done = dl.next_chunk()
-    return buf.getvalue()
-
-
 def build_requests(records, path):
     schema = Pass1.model_json_schema()
+    skipped = 0
     with open(path, "w") as out:
         for r in tqdm(records, desc="Preparing batch"):
             try:
-                b64 = base64.b64encode(download(r["drive_id"])).decode()
-                out.write(json.dumps({
-                    "key": r["drive_id"],
-                    "request": {
-                        "contents": [{"parts": [
-                            {"inline_data": {"mime_type": r["mime_type"], "data": b64}},
-                            {"text": "Classify this document according to the instructions."}]}],
-                        "system_instruction": {"parts": [{"text": SYS}]},
-                        "generation_config": {
-                            "response_mime_type": "application/json",
-                            "response_schema": schema, "temperature": 0.1}}}) + "\n")
-            except Exception as e:
-                print(f"Skipped {r['filename']}: {e}")
+                result = reader.read_for_model(drive, r, INCLUDE_IMAGES)
+            except reader.UnreadableDocument:
+                skipped += 1
+                continue
+            parts = reader.batch_parts(result, "Classify this document according to the instructions.")
+            out.write(json.dumps({
+                "key": r["drive_id"],
+                "request": {
+                    "contents": [{"parts": parts}],
+                    "system_instruction": {"parts": [{"text": SYS}]},
+                    "generation_config": {
+                        "response_mime_type": "application/json",
+                        "response_schema": schema, "temperature": 0.1}}}) + "\n")
+    if skipped:
+        print(f"  {skipped} files unreadable, skipped")
 
 
 def main():
@@ -80,8 +75,7 @@ def main():
 
     with open(INV) as f:
         inv = [json.loads(l) for l in f]
-    eligible = [r for r in inv if r["format_bucket"] in ("PDF", "Word", "Excel", "Email")
-                and r["skip_reason"] is None]
+    eligible = [r for r in inv if reader.is_eligible(r, INCLUDE_IMAGES)]
     print(f"Eligible: {len(eligible)}")
     if not eligible:
         print("Nothing to process.")
