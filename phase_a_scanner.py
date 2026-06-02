@@ -16,6 +16,7 @@ from tqdm import tqdm
 
 from config import load_config
 from manifest import Manifest
+from reader import is_eligible
 
 OUT_LOCAL = os.path.expanduser("~/scanner/phase_a_inventory.jsonl")
 GCS_PATH = "pass1/phase_a_inventory.jsonl"
@@ -121,9 +122,8 @@ def main():
     print(f"Wrote {len(records)} records to {OUT_LOCAL}")
     m.log_command("agent", "write phase_a_inventory.jsonl", OUT_LOCAL, "success")
 
-    in_scope = sum(1 for r in records
-                   if r["skip_reason"] is None
-                   and r["format_bucket"] in ("PDF", "Word", "Excel", "Email"))
+    include_images = cfg.get("scan", {}).get("include_images", True)
+    in_scope = sum(1 for r in records if is_eligible(r, include_images))
     m.set_data_scope(source_folder=folder_name, files_discovered=len(records),
                      files_in_scope=in_scope, exclusion_reasons=dict(exclusion),
                      pass_scope="pass1_type_only", pii_persisted=False)
