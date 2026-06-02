@@ -1,12 +1,13 @@
 # Document Scanner — Walkthrough
 **For Alex (Execution Operator) · Lease Estate · Companion to Addendum A v2.1**
 
-This builds a structured catalog of every document in your mirror folder —
-classified by type, language, and confidence — entirely inside **your own**
-Google environment. Nothing leaves your tenant. You own the taxonomy and run
-every step; Focusfinder provides the tooling and advises where noted.
+This analyses your mirror folder, proposes how to organise it, and builds a
+structured catalog of every document — by type, language, and confidence —
+entirely inside **your own** Google environment. Nothing leaves your tenant.
+This is the first step in turning an unstructured archive into an AI-ready,
+queryable data foundation.
 
-**Total time:** ~40 min of active work + a few hours of unattended batch wait.
+**Total time:** ~45 min of active work + a few hours of unattended batch wait.
 **Skill level:** between low-code and developer. No prior Google Cloud experience needed.
 
 | Convention | Meaning |
@@ -15,12 +16,11 @@ every step; Focusfinder provides the tooling and advises where noted.
 | YOU SHOULD SEE | what a correct result looks like |
 | IF WRONG | how to recover |
 
-**The 20-minute rule:** if a step blocks you for more than 20 minutes, use the
-prompt in Part 9 or call Emile. Don't grind.
+**The 20-minute rule:** if a step blocks you for more than 20 minutes, use the prompt in Part 10 or call Emile. Don't grind.
 
-**Your three checkpoints with Emile** (everything else is yours to run):
-1. **Taxonomy design** — shaping the document types before you start (Part 2).
-2. **Model choice** — if the model in your config isn't valid (Part 5.1).
+**Your checkpoints with Emile** (everything else is yours to run):
+1. **Taxonomy** — the tool *proposes* it from your drive; you review/edit it. Loop Emile in if unsure (Part 5.3).
+2. **Model** — if the model in your config isn't valid (Part 5.1).
 3. **Gate B** — if the pilot review fails (Part 6).
 
 ---
@@ -30,7 +30,7 @@ prompt in Part 9 or call Emile. Don't grind.
 **DO THIS:** Confirm each (write YES/NO):
 - The OneDrive to Google Drive sync is live, and you can see the mirror folder with real files at drive.google.com
 - You can sign in to console.cloud.google.com with a Google account
-- You have a credit card for Google Cloud billing (it charges only what's used — expected total: $2–40)
+- You have a credit card for Google Cloud billing (charges only what's used — expected total: $2–40)
 - You have the one-line bootstrap command from Emile (Part 3)
 
 **IF a NO:** No sync -> finish the sync step first. No Google Cloud access -> this is the project's main risk; tell Emile.
@@ -49,162 +49,163 @@ prompt in Part 9 or call Emile. Don't grind.
 
 ## Part 2 — Build your config
 
-This file tells the scanner what your documents are and where they live. **You
-author it** — the taxonomy is your call. It takes ~15 minutes.
+This file tells the scanner where your documents are and (later) how they're
+organised. **You author it.** ~10 minutes now; the taxonomy gets filled in Part 5.3.
 
 **2.1 — Get the template:**
-
-**DO THIS:** In Cloud Shell, paste:
 ```
 curl -O https://raw.githubusercontent.com/emilenols/scanner/main/client_config.example.yaml
 cp client_config.example.yaml ~/client_config.yaml
 ```
 
-**2.2 — Open it in the editor:**
-
-**DO THIS:**
+**2.2 — Open it:**
 ```
 cloudshell edit ~/client_config.yaml
 ```
-The Cloud Shell web editor opens with the file. (YAML is indentation-sensitive: keep the structure of the template, only change the values after each `:`.)
+(YAML is indentation-sensitive: keep the template's structure, only change values after each `:`.)
 
-**2.3 — Fill it.** Here's who decides what:
+**2.3 — Fill it:**
 
 | Field | What to put | Who decides |
 |---|---|---|
-| `client`, `engagement_ref` | Lease Estate's name; any reference you like | **You** |
+| `client`, `engagement_ref` | Lease Estate's name; any reference | **You** |
 | `operator` | Who is running this scan (you / your team) | **You** |
-| `gcp.project_id` | A new project ID, lowercase-with-hyphens (e.g. `lease-estate-data-lake`) | **You** |
+| `gcp.project_id` | A new project ID, lowercase-with-hyphens | **You** |
 | `gcp.region` | `europe-west1` | Leave default (keep EU for GDPR) |
 | `gcp.bucket` | A **globally-unique** bucket name | **You** (add a suffix if taken) |
 | `gcp.service_account` | `scanner-sa` | Leave default |
-| `drive.source_folder` | The **exact** name of your mirror folder in Drive | **You** — must match character-for-character |
-| `taxonomy.system_context` | One line describing your business | **You** |
-| `taxonomy.document_types` | Your real document categories. Keep `"Unknown"` **last** | **You — the core of your job** |
+| `drive.source_folder` | The **exact** name of your mirror folder in Drive | **You** — match character-for-character |
+| `taxonomy.system_context` | One line describing your business | **You — fill now** |
+| `taxonomy.document_types` | Leave as just `["Unknown"]` for now | **The tool proposes this in Part 5.3** |
 | `taxonomy.languages` | `["nl","fr","en","mixed","unknown"]` | Leave default |
-| `routing.model` | `gemini-2.5-flash-lite` | **Advisory** — confirm in Part 5.1; ask Emile if unsure |
-| `routing.accept_threshold` / `review_threshold` | `0.85` / `0.70` | **Leave default** — changing these is a methodology call; raise with Emile |
+| `routing.model` | `gemini-2.5-flash-lite` | **Advisory** — confirmed in Part 5.1 |
+| `routing.accept_threshold` / `review_threshold` | `0.85` / `0.70` | **Leave default** — changing is a methodology call; raise with Emile |
 | `routing.fallback_model` | `gemini-2.5-pro` | Leave default |
-| `gdpr.pass1_legal_basis` | (leave the template text) | Leave default |
-| `gdpr.pass2_legal_basis_ref` | `null` | **LEAVE NULL — do not touch.** This blocks any personal-data extraction until a legal basis is signed off. |
-| `gates.gate_a_approver` | Who signs off the taxonomy (e.g. a business owner like Lloyd) | **You** |
+| `gdpr.pass2_legal_basis_ref` | `null` | **LEAVE NULL — do not touch.** Blocks personal-data extraction until a legal basis is signed off. |
+| `gates.gate_a_approver` | Who signs off the taxonomy (e.g. a business owner) | **You** |
 | `gates.gate_b_approver` | Who runs the pilot review (you, or a colleague) | **You** |
 
-> **The three fields where a wrong value bites:** `routing.model` (model IDs
-> change over time — Part 5.1 verifies it), the `routing` thresholds (leave the
-> defaults), and `gdpr.pass2_legal_basis_ref` (must stay `null`). Everything
-> else is safe to set freely.
+> **The three fields where a wrong value bites:** `routing.model`, the `routing`
+> thresholds, and `gdpr.pass2_legal_basis_ref`. Leave all three as shipped unless
+> Emile says otherwise.
 
-**2.4 — Designing the taxonomy (the part worth getting right):**
-Open your mirror folder and look at what's actually there. Aim for **8–12
-document types** that match how the business already talks about these files.
-Always keep `"Unknown"` as the last entry — it's the safety net for anything the
-scanner isn't sure about. If you're unsure where to draw the lines, this is
-checkpoint #1 with Emile.
-
-**DO THIS:** Save and close the editor (top-right X, or `Ctrl+S`).
+**DO THIS:** Save and close (top-right X, or `Ctrl+S`). You do **not** invent the document types — leave `["Unknown"]`; Part 5.3 proposes them from your actual drive.
 
 ---
 
 ## Part 3 — Run the bootstrap
 
-This reads your config and creates the cloud project, service account, storage,
-and installs the scanner. ~3 minutes.
+Reads your config, creates the cloud project / service account / storage, downloads the scanner, installs everything. ~3 minutes.
 
 **DO THIS:** Paste the one line Emile gave you:
 ```
 bash <(curl -s https://raw.githubusercontent.com/emilenols/scanner/main/setup.sh)
 ```
 
-**YOU SHOULD SEE:** Progress messages, then a **"BOOTSTRAP COMPLETE — 3 human actions remain"** block.
+**YOU SHOULD SEE:** Progress, then a **"BOOTSTRAP COMPLETE — 3 human actions remain"** block.
 
-**IF WRONG:** `~/client_config.yaml not found` -> redo Part 2 (the file must be in your home folder). `'<FIELD>' could not be read from client_config.yaml` -> a formatting slip in Part 2; reopen `cloudshell edit ~/client_config.yaml` and check that line keeps the template's indentation. `quota exceeded` on project creation -> tell Emile.
+**IF WRONG:** `~/client_config.yaml not found` -> redo Part 2. `'<FIELD>' could not be read` -> a formatting slip; reopen `cloudshell edit ~/client_config.yaml` and check that line's indentation. `quota exceeded` -> tell Emile.
 
 ---
 
 ## Part 4 — The 3 human actions (the bootstrap prints these)
 
-These three need you, a logged-in human — they can't be scripted.
+**[1] Enable billing:** Open the billing link printed. Link a billing account (add a card if needed). Confirm billing **Active**.
 
-**[1] Enable billing:** Open the billing link the bootstrap printed. Link a billing account (add a card if needed). Confirm the project shows billing **Active**.
+**[2] Share the Drive folder:** drive.google.com -> right-click your mirror folder -> **Share**. Paste the **service account email** the bootstrap printed (ends `...iam.gserviceaccount.com`). Set **Viewer**. **Uncheck "Notify people."** Share.
 
-**[2] Share the Drive folder:** At drive.google.com, right-click your mirror folder -> **Share**. Paste the **service account email** the bootstrap printed (ends `...iam.gserviceaccount.com`). Set **Viewer**. **Uncheck "Notify people."** Share.
-
-**[3] Create the Gemini key:** Open https://aistudio.google.com/apikey -> **Create API key** -> select your project -> copy it (starts `AIza...`). Then in Cloud Shell:
+**[3] Create the Gemini key:** https://aistudio.google.com/apikey -> **Create API key** -> select your project -> copy (starts `AIza...`). Then:
 ```
 echo 'export GEMINI_API_KEY="AIza...PASTE_HERE..."' >> ~/.bashrc && source ~/.bashrc
 ```
 
 ---
 
-## Part 5 — Run the scan, in order
+## Part 5 — Analyse, organise, pilot
 
 **DO THIS:** Start each session with:
 ```
 cd ~/scanner && source venv/bin/activate
 ```
 
-**5.1 — Confirm your model (do this for the first run):**
+**5.1 — Confirm your model (first run):**
 ```
 python list_models.py
 ```
-Lists the model IDs available in your project. **If the `routing.model` from your config isn't in the list, stop.** Edit `cloudshell edit ~/scanner/client_config.yaml`, set `routing.model` to a listed `flash-lite` model, and re-run. Unsure which? Checkpoint #2 — ask Emile.
+Lists the model IDs in your project. **If `routing.model` isn't listed, stop**, edit `cloudshell edit ~/scanner/client_config.yaml`, set it to a listed `flash-lite` model, re-run. Unsure? Checkpoint with Emile.
 
 **5.2 — Inventory the folder:**
 ```
 python phase_a_scanner.py
 ```
-A progress bar, then a summary of file counts by type. **IF WRONG:** `Folder ... not found` -> redo the folder share (action [2]), or your `source_folder` name doesn't match Drive exactly. `Drive API has not been used` -> wait 1 min, retry.
+A progress bar, then file counts by type. **IF WRONG:** `Folder ... not found` -> redo the share (action [2]) or `source_folder` doesn't match Drive exactly. `Drive API has not been used` -> wait 1 min, retry.
 
-**5.3 — Pilot (200 documents):**
+**5.3 — Drive Analysis: discover the taxonomy (this is the key step):**
+```
+python discover_taxonomy.py
+```
+This reads a sample of your actual documents and proposes how to organise them.
+
+**DO THIS:**
+1. Download **`drive_analysis.md`** (terminal **⋮ -> Download**) and open it. It shows the document types found (ranked, with confidence and estimated counts), which folders they live in, and a scan-quality note.
+2. Decide your final taxonomy: rename, merge, drop, or **add anything the sample missed**. (A type you leave out gets filed into the nearest remaining bin — so add anything real.) Unsure where to draw lines? This is checkpoint #1 with Emile.
+3. Paste your approved list into the config:
+```
+cloudshell edit ~/scanner/client_config.yaml
+```
+Replace the `taxonomy.document_types` list (the `["Unknown"]` placeholder) with your approved types — **keep `"Unknown"` last.** Save.
+
+**This edited, approved taxonomy is your Gate A.**
+
+**5.4 — Pilot (200 documents):**
 ```
 python pilot_scanner.py
 ```
-Takes 10–25 min; ends with a document-type summary and a review rate. **IF WRONG:** Everything comes back `Unknown` -> your `system_context` or taxonomy may need tightening; refine in the config and re-run, or raise with Emile.
+10–25 min; ends with a type summary and review rate. **IF WRONG:** lots of `Unknown` -> your taxonomy may have a gap; revisit 5.3 or raise with Emile.
 
 ---
 
 ## Part 6 — Gate B (your review — required)
 
 **DO THIS:**
-1. The pilot wrote `pilot_catalog.csv`. Download it (terminal **⋮ -> Download**).
-2. Open in Excel/Sheets. Pick **20 rows at random.** For each, open the original file in Drive and check whether `document_type` and `language` are right.
-3. Record your verdict (this writes it into the audit record):
+1. Download `pilot_catalog.csv` (⋮ -> Download).
+2. Open in Excel/Sheets. Pick **20 rows at random.** For each, open the original in Drive and check `document_type` + `language`.
+3. Record your verdict:
 ```
 python gate_b.py --sample 20 --correct <N> --approver "Your Name" --role "Execution Operator"
 ```
 
-**Gate B PASSES if** at least 18 of 20 are correct **and** the review rate is < 20%. The script tells you which.
+**PASSES if** at least 18/20 correct **and** review rate < 20%. The script tells you.
 
-**IF IT FAILS:** Don't proceed — this is checkpoint #3. Bring it to Emile. Usually it means many scanned/legacy PDFs, and the fix is a one-line model change in your config.
+**IF IT FAILS:** Don't proceed — checkpoint #3. Bring it to Emile; usually it's poor scans, fixed by a one-line model change.
 
 ---
 
 ## Part 7 — Full scan + catalog
 
-**7.1 — Submit the batch** (runs on Google's servers; you can close Cloud Shell after):
+**7.1 — Submit the batch** (server-side; you can close Cloud Shell after):
 ```
 python pass1_scanner.py
 ```
-Builds requests, prints "Submitted batch job", tells you to return in 1–24h. **IF WRONG:** "Gate B not passed" -> do Part 6 first.
+**IF WRONG:** "Gate B not passed" -> do Part 6 first.
 
 **7.2 — Check back later** (reopen Cloud Shell, then `cd ~/scanner && source venv/bin/activate`):
 ```
 python check_batch.py
 ```
-`JOB_STATE_RUNNING` -> check again later. `JOB_STATE_SUCCEEDED` -> results download automatically.
+`JOB_STATE_RUNNING` -> later. `JOB_STATE_SUCCEEDED` -> results download automatically.
 
 **7.3 — Assemble the catalog:**
 ```
 python assemble_catalog.py
 ```
-Writes `catalog_v1.{csv,jsonl,parquet}`, finalizes the manifest, prints a summary. Review rate should be < 20%.
+Writes `catalog_v1.{csv,jsonl,parquet}`, finalizes the manifest. Review rate should be < 20%.
 
 **7.4 — Generate the attestation:**
 ```
 python render_compliance_summary.py
 ```
-Writes `compliance_summary.html` — an interim attestation marked "awaiting client sign-off".
+Writes `compliance_summary.html` — interim, "awaiting client sign-off".
 
 ---
 
@@ -213,15 +214,23 @@ Writes `compliance_summary.html` — an interim attestation marked "awaiting cli
 **DO THIS:**
 1. Download `catalog_v1.csv` and `compliance_summary.html` (⋮ -> Download).
 2. Send both to the business owner who accepts the catalog; ask for a short review.
-3. After they've reviewed it, that approver (or you, once they confirm) runs:
+3. After they review, that approver (or you, once confirmed) runs:
 ```
 python client_signoff.py --approver "<approver name>" --role "<role>" --confirm
 ```
-Records the sign-off and re-generates `compliance_summary.html` as the final **countersigned** version. Download and share that one.
+Re-generates `compliance_summary.html` as the final **countersigned** version. Share that one.
 
 ---
 
-## Part 9 — If something breaks
+## Part 9 — What you can hand the client
+
+- **`drive_analysis.md`** — the plain-language "here's what's on the drive and how we'll organise it" report (from 5.3).
+- **`catalog_v1.csv`** — the structured catalog of every document.
+- **`compliance_summary.html`** — the countersigned attestation.
+
+---
+
+## Part 10 — If something breaks
 
 **Paste into Claude** with your error:
 > I'm running a Python script in Google Cloud Shell for a document scanner.
@@ -230,13 +239,13 @@ Records the sign-off and re-generates `compliance_summary.html` as the final **c
 > the SA key. Please diagnose, give the exact fix, and how to verify.
 
 Common fixes:
-- **Config value can't be read** -> reopen `cloudshell edit ~/scanner/client_config.yaml`; check indentation matches the template.
-- **Folder not found** -> redo the folder share (Part 4 action [2]); confirm `source_folder` matches Drive exactly.
+- **Config value can't be read** -> `cloudshell edit ~/scanner/client_config.yaml`; check indentation.
+- **Folder not found** -> redo the share (Part 4 [2]); confirm `source_folder` matches Drive.
 - **403 / Drive API not used** -> just enabled; wait a minute, retry.
-- **Model not found** -> run `list_models.py`, fix `routing.model`, ask Emile if unsure.
-- **API quota exceeded** (pilot) -> wait 60s, retry.
+- **Model not found** -> `list_models.py`, fix `routing.model`, ask Emile.
+- **API quota exceeded** -> wait 60s, retry.
 
-If a step isn't resolved in ~20 minutes, escalate to Emile.
+If unresolved in ~20 minutes, escalate to Emile.
 
 ---
 
