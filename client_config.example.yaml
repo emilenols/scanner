@@ -34,6 +34,9 @@ routing:
   review_threshold: 0.70                  # leave default
   fallback_model: "gemini-2.5-pro"
 
+scan:
+  include_images: true                    # classify scanned images / drawings (false to skip)
+
 gdpr:
   pass1_legal_basis: "type-only classification, no PII persisted — no basis required"
   pass2_legal_basis_ref: null             # LEAVE NULL — blocks Pass 2 in code until a legal basis is signed off
