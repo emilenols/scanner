@@ -30,6 +30,8 @@ from collections import Counter, defaultdict
 
 from pydantic import BaseModel
 
+import reader
+
 INV = os.path.expanduser("~/scanner/phase_a_inventory.jsonl")
 REPORT_MD = os.path.expanduser("~/scanner/drive_analysis.md")
 SAMPLE_CSV = os.path.expanduser("~/scanner/drive_analysis_sample.csv")
@@ -192,10 +194,10 @@ def _run(sample_n):
     gemini = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
     verify_model(gemini, model)
 
+    include_images = cfg.get("scan", {}).get("include_images", True)
     with open(INV) as f:
         inv = [json.loads(l) for l in f]
-    cand = [r for r in inv if r["format_bucket"] in ("PDF", "Word")
-            and r["skip_reason"] is None]
+    cand = [r for r in inv if reader.is_eligible(r, include_images)]
     if not cand:
         raise SystemExit("No eligible PDF/Word files. Run phase_a_scanner.py first.")
     total_eligible = len(cand)
@@ -213,32 +215,30 @@ def _run(sample_n):
         "and a one-sentence reason.")
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=2, min=2, max=20))
-    def observe(content, mime):
+    def observe(result):
         resp = gemini.models.generate_content(
             model=model,
-            contents=[types.Part.from_bytes(data=content, mime_type=mime),
-                      "Describe this document per the instructions."],
+            contents=reader.sync_contents(result, "Describe this document per the instructions."),
             config=types.GenerateContentConfig(
                 system_instruction=open_sys, response_mime_type="application/json",
                 response_schema=DocObservation, temperature=0.2))
         return json.loads(resp.text)
 
-    def download(fid):
-        req = drive.files().get_media(fileId=fid)
-        buf = io.BytesIO()
-        dl = MediaIoBaseDownload(buf, req)
-        done = False
-        while not done:
-            _, done = dl.next_chunk()
-        return buf.getvalue()
-
-    per_doc = []
+    per_doc, skips = [], Counter()
     for r in tqdm(sample, desc="Analysing drive"):
         try:
-            o = observe(download(r["drive_id"]), r["mime_type"])
+            result = reader.read_for_model(drive, r, include_images)
+        except reader.UnreadableDocument as e:
+            skips[e.reason] += 1
+            continue
+        try:
+            o = observe(result)
             per_doc.append({"filename": r["filename"], "filepath": r["filepath"], **o})
         except Exception as e:
-            print(f"  skip {r['filename']}: {e}")
+            skips["model_error"] += 1
+            print(f"  skip {r['filename']}: {str(e)[:80]}")
+    if skips:
+        print("Skipped (not analysed):", dict(skips))
 
     counts = Counter(_norm(d["type_label"]) for d in per_doc)
     label_summary = "\n".join(f"- {lbl}: {c}" for lbl, c in counts.most_common())
