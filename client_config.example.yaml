@@ -21,13 +21,11 @@ gcp:
 drive:
   source_folder: "<exact mirror folder name in your Drive>"
 
-taxonomy:                                 # <-- your call: shape this to your documents
-  system_context: "<one line describing the business>"
-  document_types:
-    - "<Type 1>"
-    - "<Type 2>"
-    - "<...>"
-    - "Unknown"                           # required safety class — keep last
+taxonomy:
+  system_context: "<one line describing the business>"   # fill this now
+  document_types:                          # leave as just [Unknown] for now —
+    - "Unknown"                            # discover_taxonomy.py proposes the
+                                           # real list (walkthrough Part 5.3 = Gate A)
   languages: ["nl", "fr", "en", "mixed", "unknown"]
 
 routing:
