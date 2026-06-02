@@ -19,6 +19,10 @@ SUPPORTED_IMAGE_MIMES = {
 }
 MAX_TEXT_CHARS = 200_000
 MAX_XLSX_ROWS = 200
+# Files larger than this are skipped in the synchronous path (discovery/pilot):
+# downloading + inline-sending multi-MB scans is slow and times out. They are
+# NOT lost — the async Batch (full Pass 1) still classifies them.
+MAX_INLINE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
 class UnreadableDocument(Exception):
@@ -97,13 +101,23 @@ def _xlsx_text(data: bytes) -> str:
     return "\n".join(out)
 
 
-def read_for_model(drive, record, include_images=True) -> dict:
+def read_for_model(drive, record, include_images=True, enforce_size_cap=True) -> dict:
     """Return {'kind':'media','mime':..,'bytes':..} or {'kind':'text','text':..}.
-    Raise UnreadableDocument(reason) for skip-and-log (fast, no retry)."""
+    Raise UnreadableDocument(reason) for skip-and-log (fast, no retry).
+
+    enforce_size_cap: in the sync path (discovery/pilot) skip files over
+    MAX_INLINE_BYTES. The full Batch pass sets this False (it must read all)."""
     if not is_eligible(record, include_images):
         raise UnreadableDocument(ineligible_reason(record, include_images))
+    if enforce_size_cap and record.get("size_bytes", 0) > MAX_INLINE_BYTES:
+        raise UnreadableDocument("too_large_for_inline")
     fb, mime = record["format_bucket"], record["mime_type"]
-    data = _download(drive, record["drive_id"])
+    try:
+        data = _download(drive, record["drive_id"])
+    except UnreadableDocument:
+        raise
+    except Exception:
+        raise UnreadableDocument("download_failed")
 
     if fb == "PDF":
         return {"kind": "media", "mime": "application/pdf", "bytes": data}
