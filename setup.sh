@@ -77,6 +77,12 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:${SA_EMAIL}" \
   --role="roles/storage.objectAdmin" >/dev/null
 
+# storage uploads also resolve the project for quota/billing, which needs
+# serviceusage.services.use — not included in storage.objectAdmin.
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${SA_EMAIL}" \
+  --role="roles/serviceusage.serviceUsageConsumer" >/dev/null
+
 # 4. SA key (stays in this tenant's Cloud Shell only) ----------------------- #
 if [ ! -f "$HOME/scanner-sa-key.json" ]; then
   gcloud iam service-accounts keys create "$HOME/scanner-sa-key.json" \
