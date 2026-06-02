@@ -50,7 +50,7 @@ def build_requests(records, path):
     with open(path, "w") as out:
         for r in tqdm(records, desc="Preparing batch"):
             try:
-                result = reader.read_for_model(drive, r, INCLUDE_IMAGES)
+                result = reader.read_for_model(drive, r, INCLUDE_IMAGES, enforce_size_cap=False)
             except reader.UnreadableDocument:
                 skipped += 1
                 continue
