@@ -107,7 +107,7 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -q --upgrade pip
 pip install -q google-genai google-api-python-client google-auth pydantic \
-  pandas pyarrow tqdm tenacity google-cloud-storage pyyaml
+  pandas pyarrow tqdm tenacity google-cloud-storage pyyaml python-docx openpyxl
 
 # 7. Environment ------------------------------------------------------------ #
 grep -q GOOGLE_APPLICATION_CREDENTIALS ~/.bashrc || cat >> ~/.bashrc <<EOF
