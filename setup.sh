@@ -58,6 +58,21 @@ gcloud services enable \
 gcloud iam service-accounts create "$SA_NAME" \
   --description="Document intelligence scanner" \
   --display-name="Scanner SA" 2>/dev/null || echo "  SA exists — continuing"
+
+# SA creation is eventually consistent — wait until it's visible before binding,
+# otherwise the next call can fail with "does not exist".
+echo "Waiting for the service account to be ready..."
+for i in $(seq 1 12); do
+  if gcloud iam service-accounts describe "$SA_EMAIL" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 5
+done
+if ! gcloud iam service-accounts describe "$SA_EMAIL" >/dev/null 2>&1; then
+  echo "ERROR: service account ${SA_EMAIL} did not become available. Re-run this command."
+  exit 1
+fi
+
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:${SA_EMAIL}" \
   --role="roles/storage.objectAdmin" >/dev/null
