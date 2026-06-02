@@ -31,23 +31,32 @@ def main():
             phase_a[rec["drive_id"]] = rec
 
     rows = []
+    parsed = errored = unparseable = 0
     with open(RESULTS) as f:
         for line in f:
+            line = line.strip()
+            if not line:
+                continue
             e = json.loads(line)
             did = e.get("key")
-            resp = e.get("response", {})
-            if not did or "candidates" not in resp:
+            if e.get("error"):
+                errored += 1
                 continue
+            resp = e.get("response", e)          # tolerate wrapped or bare response
             try:
                 text = resp["candidates"][0]["content"]["parts"][0]["text"]
                 cls = json.loads(text)
             except Exception:
+                unparseable += 1
                 continue
             conf = cls.get("confidence", 0)
             rows.append({**phase_a.get(did, {}), **cls,
                          "review_required": conf < accept,
                          "fallback_candidate": conf < review_t,
                          "schema_version": "v2.1"})
+            parsed += 1
+    print(f"Batch results: {parsed} parsed, {errored} returned errors, "
+          f"{unparseable} unparseable")
 
     df = pd.DataFrame(rows)
     base = os.path.expanduser("~/scanner/catalog_v1")
