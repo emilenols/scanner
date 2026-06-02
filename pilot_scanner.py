@@ -21,6 +21,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from config import (load_config, build_pass1_model, system_instruction,
                     routing, verify_model)
 from manifest import Manifest
+import reader
 
 PILOT_SIZE = 200
 SEED = 42
@@ -32,6 +33,7 @@ ACCEPT = routing(cfg)["accept_threshold"]
 MODEL = routing(cfg)["model"]
 Pass1 = build_pass1_model(cfg)
 SYS = system_instruction(cfg)
+INCLUDE_IMAGES = cfg.get("scan", {}).get("include_images", True)
 
 creds = service_account.Credentials.from_service_account_file(
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"],
@@ -40,22 +42,11 @@ drive = build("drive", "v3", credentials=creds)
 gemini = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
 
-def download(file_id: str) -> bytes:
-    req = drive.files().get_media(fileId=file_id)
-    buf = io.BytesIO()
-    dl = MediaIoBaseDownload(buf, req)
-    done = False
-    while not done:
-        _, done = dl.next_chunk()
-    return buf.getvalue()
-
-
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=2, min=2, max=20))
-def classify(content: bytes, mime: str) -> dict:
+def classify(result: dict) -> dict:
     resp = gemini.models.generate_content(
         model=MODEL,
-        contents=[types.Part.from_bytes(data=content, mime_type=mime),
-                  "Classify this document according to the instructions."],
+        contents=reader.sync_contents(result, "Classify this document according to the instructions."),
         config=types.GenerateContentConfig(
             system_instruction=SYS, response_mime_type="application/json",
             response_schema=Pass1, temperature=0.1))
@@ -67,8 +58,7 @@ def main():
     verify_model(gemini, MODEL)  # fail fast on a stale/wrong model string
     with open(INV) as f:
         inv = [json.loads(l) for l in f]
-    cand = [r for r in inv if r["format_bucket"] in ("PDF", "Word")
-            and r["skip_reason"] is None]
+    cand = [r for r in inv if reader.is_eligible(r, INCLUDE_IMAGES)]
     print(f"{len(cand)} eligible PDF/Word files")
     random.seed(SEED)
     sample = random.sample(cand, min(PILOT_SIZE, len(cand)))
@@ -78,7 +68,13 @@ def main():
     results, failures = [], []
     for r in tqdm(sample, desc="Pilot classify"):
         try:
-            cls = classify(download(r["drive_id"]), r["mime_type"])
+            result = reader.read_for_model(drive, r, INCLUDE_IMAGES)
+        except reader.UnreadableDocument as e:
+            failures.append({"drive_id": r["drive_id"], "filename": r["filename"],
+                             "error": f"unreadable: {e.reason}"})
+            continue
+        try:
+            cls = classify(result)
             results.append({**r, **cls,
                             "review_required": cls["confidence"] < ACCEPT,
                             "scan_timestamp": datetime.now(timezone.utc).isoformat(),
