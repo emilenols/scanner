@@ -47,49 +47,52 @@ queryable data foundation.
 
 ---
 
-## Part 2 — Build your config
+## Part 2 — Build your config (answer a few questions — no file editing)
 
-This file tells the scanner where your documents are and (later) how they're
-organised. **You author it.** ~10 minutes now; the taxonomy gets filled in Part 5.3.
+You don't edit any files here. A small helper asks you a handful of plain
+questions and writes the config for you, with all the technical settings on safe
+defaults. ~5 minutes.
 
-**2.1 — Get the template:**
+**2.1 — Get the helper and run it:**
 ```
-curl -O https://raw.githubusercontent.com/emilenols/scanner/main/client_config.example.yaml
-cp client_config.example.yaml ~/client_config.yaml
+curl -O https://raw.githubusercontent.com/emilenols/scanner/main/init_config.py
+python3 init_config.py
 ```
 
-**2.2 — Open it:**
-```
-cloudshell edit ~/client_config.yaml
-```
-(YAML is indentation-sensitive: keep the template's structure, only change values after each `:`.)
+**2.2 — Answer the questions.** Where a default appears in `[brackets]`, just
+press Enter to accept it. Have these ready:
 
-**2.3 — Fill it:**
+| It asks | What to type |
+|---|---|
+| Your company's legal name | e.g. `Lease Estate NV` |
+| A reference for this engagement | anything (a default is offered) |
+| Who is running this scan | your name or team |
+| A project ID | press Enter to accept the suggestion, or type your own |
+| A storage bucket name | press Enter to accept the suggestion |
+| The **exact** name of your mirror folder in Drive | copy it character-for-character from drive.google.com |
+| One line describing your business | e.g. `Belgian commercial real estate leasing company` |
+| Who signs off the document categories | a name + role (a business owner is ideal) |
+| Who runs the pilot review | a name + role (defaults to you) |
 
-| Field | What to put | Who decides |
-|---|---|---|
-| `client`, `engagement_ref` | Lease Estate's name; any reference | **You** |
-| `operator` | Who is running this scan (you / your team) | **You** |
-| `gcp.project_id` | A new project ID, lowercase-with-hyphens | **You** |
-| `gcp.region` | `europe-west1` | Leave default (keep EU for GDPR) |
-| `gcp.bucket` | A **globally-unique** bucket name | **You** (add a suffix if taken) |
-| `gcp.service_account` | `scanner-sa` | Leave default |
-| `drive.source_folder` | The **exact** name of your mirror folder in Drive | **You** — match character-for-character |
-| `taxonomy.system_context` | One line describing your business | **You — fill now** |
-| `taxonomy.document_types` | Leave as just `["Unknown"]` for now | **The tool proposes this in Part 5.3** |
-| `taxonomy.languages` | `["nl","fr","en","mixed","unknown"]` | Leave default |
-| `routing.model` | `gemini-2.5-flash-lite` | **Advisory** — confirmed in Part 5.1 |
-| `routing.accept_threshold` / `review_threshold` | `0.85` / `0.70` | **Leave default** — changing is a methodology call; raise with Emile |
-| `routing.fallback_model` | `gemini-2.5-pro` | Leave default |
-| `gdpr.pass2_legal_basis_ref` | `null` | **LEAVE NULL — do not touch.** Blocks personal-data extraction until a legal basis is signed off. |
-| `gates.gate_a_approver` | Who signs off the taxonomy (e.g. a business owner) | **You** |
-| `gates.gate_b_approver` | Who runs the pilot review (you, or a colleague) | **You** |
+**YOU SHOULD SEE:** `Wrote ~/client_config.yaml`, then a summary and the
+service-account email you'll use later.
 
-> **The three fields where a wrong value bites:** `routing.model`, the `routing`
-> thresholds, and `gdpr.pass2_legal_basis_ref`. Leave all three as shipped unless
-> Emile says otherwise.
+**What you are NOT asked** — and why that's good:
+- **The document types.** You don't invent them. The Drive Analysis in Part 5.3
+  reads your actual files and proposes the list for you to approve.
+- **The technical settings** (region, model, confidence thresholds, the GDPR
+  safety lock). The helper sets these to safe, tested defaults. You never touch
+  them — and the GDPR lock that prevents any personal-data extraction is on by
+  default.
 
-**DO THIS:** Save and close (top-right X, or `Ctrl+S`). You do **not** invent the document types — leave `["Unknown"]`; Part 5.3 proposes them from your actual drive.
+**IF WRONG:** A value rejected (e.g. a project ID with capitals or spaces) → the
+helper explains the rule and re-asks; just retype. Made a mistake after it
+finished? Re-run `python3 init_config.py` and it offers to overwrite.
+
+**(Optional, advanced) Prefer to edit the file directly?** You can instead
+`curl -O .../client_config.example.yaml`, `cp` it to `~/client_config.yaml`, and
+`cloudshell edit` it — but YAML indentation is easy to break, so the helper above
+is the recommended path for everyone.
 
 ---
 
