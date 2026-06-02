@@ -29,8 +29,10 @@ import reader
 INV = os.path.expanduser("~/scanner/phase_a_inventory.jsonl")
 BATCH_REQ = os.path.expanduser("~/scanner/batch_requests.jsonl")
 JOB_FILE = os.path.expanduser("~/scanner/batch_job.txt")
+UPLOAD_CACHE = os.path.expanduser("~/scanner/upload_cache.json")
 PROMPT = "Classify this document according to the instructions."
 MAX_WORKERS = 8          # concurrent File API uploads
+UPLOAD_TIMEOUT = 90      # seconds per file before giving up on it
 
 cfg = load_config()
 MODEL = routing(cfg)["model"]
@@ -40,6 +42,12 @@ BUCKET = cfg["gcp"]["bucket"]
 INCLUDE_IMAGES = cfg.get("scan", {}).get("include_images", True)
 KEY_PATH = os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
 API_KEY = os.environ["GEMINI_API_KEY"]
+
+import socket
+import time
+socket.setdefaulttimeout(UPLOAD_TIMEOUT)  # bound every socket op so one slow file can't hang the run
+
+CACHE_TTL = 40 * 3600    # File API uploads live ~48h; re-upload anything older to be safe
 
 # Per-thread Drive + Gemini clients (googleapiclient/httplib2 is NOT thread-safe)
 _local = threading.local()
@@ -54,19 +62,43 @@ def _clients():
     return _local.drive, _local.gem
 
 
-def make_part(record):
-    """Read a document and return a request part (uploading media to the File
-    API and referencing it; inlining extracted text). Returns None to skip."""
+def load_cache() -> dict:
+    """Reuse File API uploads from a prior run. Media entries older than the TTL
+    are dropped (the uploaded file has likely expired); text entries never expire."""
+    if not os.path.exists(UPLOAD_CACHE):
+        return {}
+    try:
+        raw = json.load(open(UPLOAD_CACHE))
+    except Exception:
+        return {}
+    now = time.time()
+    return {k: e for k, e in raw.items()
+            if not (e.get("media") and now - e.get("ts", 0) > CACHE_TTL)}
+
+
+def save_cache(cache: dict):
+    try:
+        json.dump(cache, open(UPLOAD_CACHE, "w"))
+    except Exception:
+        pass
+
+
+def make_part(record, cache):
+    """Return (status, part). status: 'cached' | 'new' | 'skip'.
+    Cached entries cost nothing (no download, no upload)."""
+    did = record["drive_id"]
+    if did in cache:
+        return "cached", cache[did]["part"]
     drive, gem = _clients()
     try:
         result = reader.read_for_model(drive, record, INCLUDE_IMAGES, enforce_size_cap=False)
     except reader.UnreadableDocument:
-        return None
+        return "skip", None
     if result["kind"] == "media":
         up = gem.files.upload(file=io.BytesIO(result["bytes"]),
                               config={"mime_type": result["mime"]})
-        return {"file_data": {"file_uri": up.uri, "mime_type": result["mime"]}}
-    return {"text": f"Document content:\n\n{result['text']}"}
+        return "new", {"file_data": {"file_uri": up.uri, "mime_type": result["mime"]}}
+    return "new", {"text": f"Document content:\n\n{result['text']}"}
 
 
 def _inline_refs(schema: dict) -> dict:
@@ -94,22 +126,29 @@ def _inline_refs(schema: dict) -> dict:
 
 def build_requests(records, path):
     schema = _inline_refs(Pass1.model_json_schema())
-    skipped = 0
+    cache = load_cache()
+    reused = uploaded = skipped = 0
     lines = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
-        futures = {ex.submit(make_part, r): r for r in records}
+        futures = {ex.submit(make_part, r, cache): r for r in records}
         for fut in tqdm(concurrent.futures.as_completed(futures),
                         total=len(records), desc="Uploading + preparing"):
             r = futures[fut]
             try:
-                part = fut.result()
+                status, part = fut.result()
             except Exception as e:
                 print(f"  skip {r['filename']}: {str(e)[:80]}")
                 skipped += 1
                 continue
-            if part is None:
+            if status == "skip" or part is None:
                 skipped += 1
                 continue
+            if status == "cached":
+                reused += 1
+            else:
+                uploaded += 1
+                cache[r["drive_id"]] = {"part": part, "media": "file_data" in part,
+                                        "ts": time.time()}
             lines.append(json.dumps({
                 "key": r["drive_id"],
                 "request": {
@@ -118,10 +157,10 @@ def build_requests(records, path):
                     "generation_config": {
                         "response_mime_type": "application/json",
                         "response_schema": schema, "temperature": 0.1}}}))
+    save_cache(cache)
     with open(path, "w") as out:
         out.write("\n".join(lines) + "\n")
-    if skipped:
-        print(f"  {skipped} files unreadable/failed, skipped")
+    print(f"  reused {reused} cached, uploaded {uploaded}, skipped {skipped}")
     return len(lines)
 
 
