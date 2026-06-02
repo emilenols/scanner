@@ -69,8 +69,31 @@ def make_part(record):
     return {"text": f"Document content:\n\n{result['text']}"}
 
 
+def _inline_refs(schema: dict) -> dict:
+    """The batch endpoint rejects JSON-Schema $ref/$defs. Pydantic emits them
+    for nested models/enums, so resolve every $ref against $defs and strip
+    $defs, producing a flat self-contained schema."""
+    defs = schema.get("$defs", {})
+
+    def resolve(node):
+        if isinstance(node, dict):
+            if "$ref" in node:
+                name = node["$ref"].split("/")[-1]
+                target = resolve(dict(defs.get(name, {})))
+                # merge any sibling keys (e.g. description) over the resolved def
+                merged = {**target, **{k: v for k, v in node.items() if k != "$ref"}}
+                return resolve(merged) if "$ref" in merged else merged
+            return {k: resolve(v) for k, v in node.items() if k != "$defs"}
+        if isinstance(node, list):
+            return [resolve(x) for x in node]
+        return node
+
+    out = resolve({k: v for k, v in schema.items() if k != "$defs"})
+    return out
+
+
 def build_requests(records, path):
-    schema = Pass1.model_json_schema()
+    schema = _inline_refs(Pass1.model_json_schema())
     skipped = 0
     lines = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
