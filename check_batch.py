@@ -39,7 +39,7 @@ def main():
             from urllib.parse import urlparse
             from google.cloud import storage
             p = urlparse(gcs_uri)
-            storage.Client().bucket(p.netloc).blob(p.path.lstrip("/")).download_to_filename(RESULTS)
+            storage.Client(project=cfg["gcp"]["project_id"]).bucket(p.netloc).blob(p.path.lstrip("/")).download_to_filename(RESULTS)
             print(f"Results downloaded to {RESULTS}")
             m.log_command("agent", "batch results download (GCS)", gcs_uri, "success")
             print("Next: python assemble_catalog.py")
