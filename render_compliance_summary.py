@@ -138,6 +138,7 @@ footer{margin-top:34px;padding-top:16px;border-top:1px solid var(--hair);
 
 def _principle_cards(m: dict) -> str:
     ds = m.get("data_scope") or {}
+    oi = m.get("output_integrity") or {}
     proc = (m.get("processing") or [{}])[0]
     gates = m.get("human_gates") or []
     gate_b = next((g for g in gates if g.get("gate") == "B_pilot_review"), {})
@@ -154,7 +155,7 @@ def _principle_cards(m: dict) -> str:
          f"Gate B: {gate_summary}"),
         ("Data minimization", e(ap.get("data_minimization", "")),
          f"Pass 1 PII persisted: {('no' if not ds.get('pii_persisted') else 'YES')} · "
-         f"in scope {e(ds.get('files_in_scope'))} of {e(ds.get('files_discovered'))}"),
+         f"{e(oi.get('total_rows'))} catalogued of {e(ds.get('files_discovered'))} discovered"),
         ("Transparency", e(ap.get("transparency", "")),
          f"Model: {e(proc.get('model'))} · accept ≥ {e(proc.get('confidence_threshold_accept'))}"),
         ("Logging", e(ap.get("logging", "")),
@@ -167,10 +168,16 @@ def _principle_cards(m: dict) -> str:
     return '<div class="cards">' + "".join(out) + "</div>"
 
 
-def _exclusion_rows(ds: dict) -> str:
+def _exclusion_rows(ds: dict, excluded_total=None) -> str:
+    reasons = dict(ds.get("exclusion_reasons") or {})
+    known = sum(v for v in reasons.values() if isinstance(v, int))
     rows = ""
-    for reason, count in (ds.get("exclusion_reasons") or {}).items():
+    for reason, count in reasons.items():
         rows += f"<tr><td>{e(reason)}</td><td>{e(count)}</td></tr>"
+    # add a remainder row so the table reconciles to the headline 'excluded' number
+    if isinstance(excluded_total, int) and excluded_total > known:
+        rows += (f'<tr><td>other (ineligible format / unreadable)</td>'
+                 f'<td>{excluded_total - known}</td></tr>')
     return rows or '<tr><td class="muted">none</td><td>0</td></tr>'
 
 
@@ -231,9 +238,15 @@ def render(m: dict) -> str:
                    " &nbsp;·&nbsp; Client sign-off is pending; this document "
                    "reflects operator attestation only.")
 
-    total = e(oi.get("total_rows", "—"))
+    catalogued = oi.get("total_rows")
+    discovered = ds.get("files_discovered")
+    if isinstance(catalogued, int) and isinstance(discovered, int):
+        excluded_n = max(discovered - catalogued, 0)
+    else:
+        excluded_n = ds.get("files_excluded")
+    total = e(catalogued if catalogued is not None else "—")
     review = e(oi.get("review_rate_pct", proc.get("review_rate_pct", "—")))
-    excluded = e(ds.get("files_excluded", "—"))
+    excluded = e(excluded_n if excluded_n is not None else "—")
 
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -284,7 +297,7 @@ Every statement below is drawn directly from a tamper-evident, signed scan manif
 <section>
 <h2>Data minimization — what was deliberately not processed</h2>
 <table><thead><tr><th>Exclusion reason</th><th>Files</th></tr></thead>
-<tbody>{_exclusion_rows(ds)}</tbody></table>
+<tbody>{_exclusion_rows(ds, excluded_n)}</tbody></table>
 <p class="muted" style="font-size:12px;margin-top:10px">
 Pass 1 classified document type only and persisted no personal data
 ({'confirmed: no PII persisted' if not ds.get('pii_persisted') else 'WARNING: PII flag set'}).
@@ -308,11 +321,12 @@ Extraction of business fields (Pass 2) is gated on a separately documented legal
 </section>
 
 <footer>
-Risk classification (operator assessment): limited / minimal-risk — internal
-document organization with human oversight; no automated decisions affecting
-individuals. &nbsp;·&nbsp; This document is generated automatically and solely
-from the cryptographically-hashed scan manifest (run {short_id}). It attests to
-process design and execution and does not constitute legal advice.{client_note}
+This tool performs internal document organization with human oversight and makes
+no automated decisions about individuals. Its formal EU AI Act risk-tier
+classification is subject to legal review and is not asserted here. &nbsp;·&nbsp;
+This document is generated automatically and solely from the
+cryptographically-hashed scan manifest (run {short_id}). It attests to process
+design and execution and does not constitute legal advice.{client_note}
 </footer>
 </div></body></html>"""
 
@@ -340,7 +354,7 @@ def main():
             # bucket name comes from config in the live run; upload best-effort
             from config import load_config
             bname = load_config()["gcp"]["bucket"]
-            storage.Client().bucket(bname).blob("audit/compliance_summary.html") \
+            storage.Client(project=m.get("gcp_project")).bucket(bname).blob("audit/compliance_summary.html") \
                 .upload_from_filename(OUT_HTML)
             print(f"  Uploaded to gs://{bname}/audit/compliance_summary.html")
         except Exception as ex:
