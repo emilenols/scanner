@@ -133,7 +133,7 @@ def main():
         print(f"  {b}: {c}")
     print(f"\nIn scope for Phase B: {in_scope}")
 
-    storage.Client().bucket(bucket_name).blob(GCS_PATH).upload_from_filename(OUT_LOCAL)
+    storage.Client(project=cfg["gcp"]["project_id"]).bucket(bucket_name).blob(GCS_PATH).upload_from_filename(OUT_LOCAL)
     print(f"\nUploaded to gs://{bucket_name}/{GCS_PATH}")
     m.log_command("agent", "gcs upload", f"gs://{bucket_name}/{GCS_PATH}", "success")
 
