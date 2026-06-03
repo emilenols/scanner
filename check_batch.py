@@ -19,9 +19,11 @@ def main():
     job_id = open(JOB_FILE).read().strip()
     job = gemini.batches.get(name=job_id)
     state = str(job.state)
+    # SDK may stringify as 'JobState.JOB_STATE_SUCCEEDED' or 'JOB_STATE_SUCCEEDED'
+    state_tail = state.split(".")[-1]
     print(f"Job: {job_id}\nState: {state}")
 
-    if state == "JOB_STATE_SUCCEEDED":
+    if state_tail == "JOB_STATE_SUCCEEDED":
         dest = job.dest
         # File API src -> result is a downloadable file; GCS src -> gcs_uri
         file_name = getattr(dest, "file_name", None) if dest else None
@@ -44,7 +46,7 @@ def main():
         else:
             print("Succeeded but no output destination found on the job:")
             print(json.dumps(job.model_dump(), indent=2, default=str)[:2000])
-    elif state in ("JOB_STATE_FAILED", "JOB_STATE_CANCELLED", "JOB_STATE_EXPIRED"):
+    elif state_tail in ("JOB_STATE_FAILED", "JOB_STATE_CANCELLED", "JOB_STATE_EXPIRED"):
         m.log_command("agent", "batch poll", job_id, "failure")
         print("Job ended in a non-success state:")
         print(json.dumps(job.model_dump(), indent=2, default=str)[:2000])
