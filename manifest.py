@@ -267,6 +267,7 @@ class Manifest:
 
     def upload_gcs(self, bucket_name, blob_path="audit/scan_manifest.json"):
         from google.cloud import storage
-        storage.Client().bucket(bucket_name).blob(blob_path) \
+        project = getattr(self.m, "gcp_project", None)
+        storage.Client(project=project).bucket(bucket_name).blob(blob_path) \
             .upload_from_filename(self.local_path)
         return f"gs://{bucket_name}/{blob_path}"
