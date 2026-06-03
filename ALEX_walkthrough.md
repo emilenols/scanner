@@ -141,6 +141,7 @@ Lists the model IDs in your project. **If `routing.model` isn't listed, stop**, 
 ```
 python phase_a_scanner.py
 ```
+> **Checkpoint — send to Emile:** `python checkpoint.py inventory` then send the file it writes. This is a safe, metadata-only summary (no file contents or names). It lets Emile confirm the corpus looks right before you spend time on the scan.
 A progress bar, then file counts by type. **IF WRONG:** `Folder ... not found` -> redo the share (action [2]) or `source_folder` doesn't match Drive exactly. `Drive API has not been used` -> wait 1 min, retry.
 
 **5.3 — Drive Analysis: discover the taxonomy (this is the key step):**
@@ -148,23 +149,34 @@ A progress bar, then file counts by type. **IF WRONG:** `Folder ... not found` -
 python discover_taxonomy.py
 ```
 This reads a sample of your actual documents and proposes how to organise them.
+It writes two files: a report and a plain editable list.
 
 **DO THIS:**
 1. Download **`drive_analysis.md`** (terminal **⋮ -> Download**) and open it. It shows the document types found (ranked, with confidence and estimated counts), which folders they live in, and a scan-quality note.
-2. Decide your final taxonomy: rename, merge, drop, or **add anything the sample missed**. (A type you leave out gets filed into the nearest remaining bin — so add anything real.) Unsure where to draw lines? This is checkpoint #1 with Emile.
-3. Paste your approved list into the config:
+2. Open the plain list and edit it — no file format to worry about, just one type per line:
 ```
-cloudshell edit ~/scanner/client_config.yaml
+cloudshell edit ~/scanner/proposed_taxonomy.txt
 ```
-Replace the `taxonomy.document_types` list (the `["Unknown"]` placeholder) with your approved types — **keep `"Unknown"` last.** Save.
+Rename a type by retyping it, drop one by deleting its line, add one by adding a line. (A type you leave out gets filed into the nearest remaining bin — so add anything real the sample missed.) You don't need to add "Unknown" — it's added for you. Unsure where to draw the lines? This is checkpoint #1 with Emile. Save when done.
+3. Apply your approved list to the config — one command, no YAML editing:
+```
+python apply_taxonomy.py
+```
+It writes your types into the config correctly and records your approval.
 
-**This edited, approved taxonomy is your Gate A.**
+**This approved taxonomy is your Gate A.**
+
+> **Checkpoint — send to Emile:** `python checkpoint.py discovery` then send the file. Emile will sanity-check the proposed categories with you before the pilot — this is checkpoint #1.
+
+*(Advanced: you can instead edit `taxonomy.document_types` directly in `cloudshell edit ~/scanner/client_config.yaml`, keeping `"Unknown"` last — but the plain-list + apply path above avoids any YAML pitfalls.)*
 
 **5.4 — Pilot (200 documents):**
 ```
 python pilot_scanner.py
 ```
 10–25 min; ends with a type summary and review rate. **IF WRONG:** lots of `Unknown` -> your taxonomy may have a gap; revisit 5.3 or raise with Emile.
+
+> **Checkpoint — send to Emile:** `python checkpoint.py pilot` then send the file, *before* you do Gate B. Emile reviews the quality signals and tells you if anything needs adjusting.
 
 ---
 
@@ -232,6 +244,27 @@ Re-generates `compliance_summary.html` as the final **countersigned** version. S
 - **`compliance_summary.html`** — the countersigned attestation.
 
 ---
+
+## Part 9b — Sending status to Emile (safe by design)
+
+At each checkpoint above, one command writes a short report you send to Emile so
+he can check progress and help improve things — without ever seeing your
+documents. The reports contain **only aggregate numbers** (counts, categories,
+confidence, error reasons): **no file contents, no file names, no folder names.**
+Your documents never leave your environment.
+
+```
+python checkpoint.py doctor       # when something is stuck — environment snapshot
+python checkpoint.py inventory    # after 5.2
+python checkpoint.py discovery    # after 5.3
+python checkpoint.py pilot        # after 5.4, before Gate B
+python checkpoint.py catalog      # after 7.3
+```
+
+Each writes a `checkpoint_<step>.md` file (and prints it). Download it
+(**⋮ -> Download**) and email it, or copy-paste the printed text. When you're
+stuck, run `python checkpoint.py doctor` and send that **plus** the last ~15 lines
+of any red error text.
 
 ## Part 10 — If something breaks
 
