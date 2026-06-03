@@ -80,7 +80,7 @@ def main():
 
     # Upload catalog
     bucket = cfg["gcp"]["bucket"]
-    gcs = storage.Client()
+    gcs = storage.Client(project=cfg["gcp"]["project_id"])
     for ext in ("jsonl", "csv", "parquet"):
         gcs.bucket(bucket).blob(f"pass1/catalog_v1.{ext}") \
             .upload_from_filename(f"{base}.{ext}")
